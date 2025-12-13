@@ -40,7 +40,6 @@ class JigsawPuzzle {
         this.startBtn = document.getElementById('startBtn');
         this.shuffleBtn = document.getElementById('shuffleBtn');
         this.hintBtn = document.getElementById('hintBtn');
-        this.preview = document.getElementById('preview');
         this.timerDisplay = document.getElementById('timer');
         this.connectedCountDisplay = document.getElementById('connectedCount');
         this.totalConnectionsDisplay = document.getElementById('totalConnections');
@@ -94,9 +93,9 @@ class JigsawPuzzle {
 
     resizeCanvas() {
         const container = this.canvas.parentElement;
-        // Use the full container size minus padding
-        this.canvas.width = container.clientWidth - 20;
-        this.canvas.height = container.clientHeight - 20;
+        // Use the full container size
+        this.canvas.width = container.clientWidth;
+        this.canvas.height = container.clientHeight;
         if (this.isPlaying) {
             this.render();
         }
@@ -109,7 +108,6 @@ class JigsawPuzzle {
             reader.onload = (e) => {
                 this.image = new Image();
                 this.image.onload = () => {
-                    this.showPreview();
                     this.updatePieceInfo();
                     this.startBtn.disabled = false;
                 };
@@ -117,13 +115,6 @@ class JigsawPuzzle {
             };
             reader.readAsDataURL(file);
         }
-    }
-
-    showPreview() {
-        this.preview.innerHTML = '';
-        const img = document.createElement('img');
-        img.src = this.image.src;
-        this.preview.appendChild(img);
     }
 
     // Calculate optimal grid dimensions based on image aspect ratio and target piece count
