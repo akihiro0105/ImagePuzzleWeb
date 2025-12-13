@@ -240,6 +240,11 @@ button:disabled {
     background: rgba(0, 0, 0, 0.3);
     border-radius: 8px;
     cursor: grab;
+    /* Prevent default touch behaviors on iOS */
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 #puzzleCanvas:active {

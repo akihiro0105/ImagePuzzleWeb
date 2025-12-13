@@ -54,14 +54,24 @@ class JigsawPuzzle {
         this.hintBtn.addEventListener('click', () => this.toggleHint());
         this.playAgainBtn.addEventListener('click', () => this.resetGame());
 
+        // Mouse events
         this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
         this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
         this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
         this.canvas.addEventListener('mouseleave', (e) => this.handleMouseUp(e));
 
-        this.canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e));
-        this.canvas.addEventListener('touchmove', (e) => this.handleTouchMove(e));
-        this.canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e));
+        // Touch events (with passive: false for iOS Safari)
+        this.canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e), { passive: false });
+        this.canvas.addEventListener('touchmove', (e) => this.handleTouchMove(e), { passive: false });
+        this.canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e), { passive: false });
+        this.canvas.addEventListener('touchcancel', (e) => this.handleTouchEnd(e), { passive: false });
+
+        // Pointer events (for Apple Pencil and stylus support)
+        this.canvas.addEventListener('pointerdown', (e) => this.handlePointerDown(e));
+        this.canvas.addEventListener('pointermove', (e) => this.handlePointerMove(e));
+        this.canvas.addEventListener('pointerup', (e) => this.handlePointerUp(e));
+        this.canvas.addEventListener('pointercancel', (e) => this.handlePointerUp(e));
+        this.canvas.addEventListener('pointerleave', (e) => this.handlePointerUp(e));
 
         window.addEventListener('resize', () => this.resizeCanvas());
     }
@@ -553,6 +563,35 @@ class JigsawPuzzle {
     }
 
     handleTouchEnd(e) {
+        this.endDrag();
+    }
+
+    // Pointer event handlers (for Apple Pencil and stylus)
+    handlePointerDown(e) {
+        if (!this.isPlaying) return;
+        // Only handle pen/touch, let mouse events handle mouse
+        if (e.pointerType === 'mouse') return;
+
+        e.preventDefault();
+        const rect = this.canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        this.startDrag(x, y);
+    }
+
+    handlePointerMove(e) {
+        if (!this.draggedGroup) return;
+        if (e.pointerType === 'mouse') return;
+
+        e.preventDefault();
+        const rect = this.canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        this.drag(x, y);
+    }
+
+    handlePointerUp(e) {
+        if (e.pointerType === 'mouse') return;
         this.endDrag();
     }
 
