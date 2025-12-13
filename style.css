@@ -4,18 +4,24 @@
     box-sizing: border-box;
 }
 
-html, body {
+html {
+    height: 100%;
+}
+
+body {
     height: 100%;
     overflow: hidden;
     /* iOS Safari fix for viewport height */
     position: fixed;
     width: 100%;
-}
-
-body {
+    top: 0;
+    left: 0;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #1a1a2e;
     background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    background-attachment: fixed;
     color: #fff;
+    -webkit-overflow-scrolling: touch;
 }
 
 .container {
