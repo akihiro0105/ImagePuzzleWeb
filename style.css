@@ -36,98 +36,78 @@ body {
     }
 }
 
-header {
-    text-align: center;
-    flex-shrink: 0;
-    padding: 5px 0;
-}
-
-header h1 {
-    font-size: 1.8rem;
-    background: linear-gradient(90deg, #e94560, #ff6b6b);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-.controls {
+.toolbar {
     display: flex;
     flex-wrap: wrap;
-    gap: 15px;
+    gap: 8px;
+    align-items: center;
     justify-content: center;
-    align-items: flex-end;
-    padding: 10px 15px;
+    padding: 8px;
     background: rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
-    margin-bottom: 10px;
+    border-radius: 8px;
+    margin-bottom: 8px;
     backdrop-filter: blur(10px);
     flex-shrink: 0;
 }
 
-.control-group {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-}
-
-.control-group label {
-    font-size: 0.8rem;
-    color: #ccc;
-}
-
-.control-group input[type="file"] {
-    padding: 6px;
+.toolbar input[type="file"] {
+    padding: 4px;
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 6px;
-    color: #fff;
-    cursor: pointer;
-    font-size: 0.85rem;
-}
-
-.control-group input[type="file"]::file-selector-button {
-    padding: 6px 12px;
-    background: #e94560;
-    border: none;
     border-radius: 4px;
     color: #fff;
     cursor: pointer;
-    margin-right: 8px;
-    font-size: 0.85rem;
+    font-size: 0.75rem;
+    max-width: 150px;
 }
 
-.control-group input[type="file"]::file-selector-button:hover {
+.toolbar input[type="file"]::file-selector-button {
+    padding: 4px 8px;
+    background: #e94560;
+    border: none;
+    border-radius: 3px;
+    color: #fff;
+    cursor: pointer;
+    margin-right: 4px;
+    font-size: 0.7rem;
+}
+
+.toolbar input[type="file"]::file-selector-button:hover {
     background: #ff6b6b;
 }
 
-.control-group select {
-    padding: 8px 12px;
+.toolbar select {
+    padding: 5px 8px;
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 6px;
+    border-radius: 4px;
     color: #fff;
-    font-size: 0.9rem;
+    font-size: 0.75rem;
     cursor: pointer;
 }
 
-.control-group select option {
+.toolbar select option {
     background: #1a1a2e;
     color: #fff;
 }
 
-#pieceInfo {
-    font-size: 0.9rem;
+.info-badge {
+    padding: 4px 8px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    font-size: 0.75rem;
     color: #4ecdc4;
     font-weight: bold;
+    font-family: 'Courier New', monospace;
 }
 
 button {
-    padding: 8px 18px;
-    font-size: 0.9rem;
+    padding: 5px 12px;
+    font-size: 0.75rem;
     border: none;
-    border-radius: 6px;
+    border-radius: 4px;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
     font-weight: bold;
 }
 
@@ -137,8 +117,7 @@ button {
 }
 
 #startBtn:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 20px rgba(233, 69, 96, 0.4);
+    box-shadow: 0 3px 10px rgba(233, 69, 96, 0.4);
 }
 
 #shuffleBtn {
@@ -147,8 +126,7 @@ button {
 }
 
 #shuffleBtn:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 20px rgba(78, 205, 196, 0.4);
+    box-shadow: 0 3px 10px rgba(78, 205, 196, 0.4);
 }
 
 #hintBtn {
@@ -157,39 +135,12 @@ button {
 }
 
 #hintBtn:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 20px rgba(249, 212, 35, 0.4);
+    box-shadow: 0 3px 10px rgba(249, 212, 35, 0.4);
 }
 
 button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-}
-
-.game-info {
-    display: flex;
-    justify-content: center;
-    gap: 30px;
-    padding: 8px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 8px;
-    margin-bottom: 10px;
-    flex-shrink: 0;
-}
-
-.info-item {
-    font-size: 1rem;
-}
-
-.info-item span:first-child {
-    color: #ccc;
-    margin-right: 8px;
-}
-
-#timer {
-    color: #4ecdc4;
-    font-weight: bold;
-    font-family: 'Courier New', monospace;
 }
 
 .game-area {
@@ -327,45 +278,44 @@ button:disabled {
 
 @media (max-width: 600px) {
     .container {
-        padding: 5px;
-        padding-top: max(5px, env(safe-area-inset-top));
-        padding-bottom: max(5px, env(safe-area-inset-bottom));
+        padding: 3px;
+        padding-top: max(3px, env(safe-area-inset-top));
+        padding-bottom: max(3px, env(safe-area-inset-bottom));
     }
 
-    header h1 {
-        font-size: 1.2rem;
+    .toolbar {
+        gap: 4px;
+        padding: 4px;
+        margin-bottom: 4px;
     }
 
-    .controls {
-        gap: 5px;
-        padding: 5px;
-    }
-
-    .control-group label {
+    .toolbar input[type="file"] {
+        max-width: 100px;
         font-size: 0.65rem;
+        padding: 2px;
     }
 
-    .control-group select,
-    .control-group input[type="file"] {
-        font-size: 0.75rem;
-        padding: 4px 6px;
+    .toolbar input[type="file"]::file-selector-button {
+        padding: 2px 4px;
+        font-size: 0.6rem;
+    }
+
+    .toolbar select {
+        font-size: 0.65rem;
+        padding: 3px 4px;
+    }
+
+    .info-badge {
+        font-size: 0.65rem;
+        padding: 2px 4px;
     }
 
     button {
-        padding: 5px 10px;
-        font-size: 0.75rem;
-    }
-
-    .game-info {
-        gap: 10px;
-        padding: 4px;
-    }
-
-    .info-item {
-        font-size: 0.75rem;
+        padding: 3px 6px;
+        font-size: 0.65rem;
     }
 
     .puzzle-section {
-        padding: 3px;
+        padding: 2px;
     }
 }
