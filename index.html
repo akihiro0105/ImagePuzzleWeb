@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ジグソーパズルゲーム</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>ジグソーパズルゲーム</h1>
+        </header>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="imageInput">画像を選択:</label>
+                <input type="file" id="imageInput" accept="image/*">
+            </div>
+
+            <div class="control-group">
+                <label for="difficulty">難易度:</label>
+                <select id="difficulty">
+                    <option value="12">簡単 (約12ピース)</option>
+                    <option value="24" selected>普通 (約24ピース)</option>
+                    <option value="48">難しい (約48ピース)</option>
+                    <option value="80">とても難しい (約80ピース)</option>
+                    <option value="300">エキスパート (約300ピース)</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label>ピース数:</label>
+                <span id="pieceInfo">-</span>
+            </div>
+
+            <button id="startBtn" disabled>ゲーム開始</button>
+            <button id="shuffleBtn" disabled>シャッフル</button>
+            <button id="hintBtn" disabled>ヒント表示</button>
+        </div>
+
+        <div class="game-info">
+            <div class="info-item">
+                <span>経過時間:</span>
+                <span id="timer">00:00</span>
+            </div>
+            <div class="info-item">
+                <span>接続済み:</span>
+                <span id="connectedCount">0</span> / <span id="totalConnections">0</span>
+            </div>
+        </div>
+
+        <div class="game-area">
+            <div class="preview-section">
+                <h3>完成イメージ</h3>
+                <div id="preview"></div>
+            </div>
+
+            <div class="puzzle-section">
+                <canvas id="puzzleCanvas"></canvas>
+            </div>
+        </div>
+
+        <div id="completeModal" class="modal">
+            <div class="modal-content">
+                <h2>おめでとうございます！</h2>
+                <div id="completeImageContainer">
+                    <img id="completeImage" src="" alt="完成画像">
+                </div>
+                <p>クリア時間: <span id="clearTime"></span></p>
+                <button id="playAgainBtn">もう一度プレイ</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
