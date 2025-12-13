@@ -7,6 +7,9 @@
 html, body {
     height: 100%;
     overflow: hidden;
+    /* iOS Safari fix for viewport height */
+    position: fixed;
+    width: 100%;
 }
 
 body {
@@ -16,10 +19,21 @@ body {
 }
 
 .container {
-    height: 100vh;
+    height: 100vh; /* Fallback for older browsers */
+    height: calc(var(--vh, 1vh) * 100); /* JS-calculated viewport height */
     display: flex;
     flex-direction: column;
     padding: 10px;
+    padding-top: env(safe-area-inset-top, 10px); /* iPhone notch area */
+    padding-bottom: env(safe-area-inset-bottom, 10px); /* iPhone home indicator */
+    overflow: hidden;
+}
+
+/* Support for iOS Safari dynamic viewport */
+@supports (height: 100dvh) {
+    .container {
+        height: 100dvh;
+    }
 }
 
 header {

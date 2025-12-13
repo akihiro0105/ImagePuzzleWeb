@@ -23,7 +23,14 @@ class JigsawPuzzle {
 
         this.initElements();
         this.initEventListeners();
+        this.setViewportHeight();
         this.resizeCanvas();
+    }
+
+    setViewportHeight() {
+        // Fix for iOS Safari viewport height issue
+        const vh = window.innerHeight * 0.01;
+        document.documentElement.style.setProperty('--vh', `${vh}px`);
     }
 
     initElements() {
@@ -73,7 +80,16 @@ class JigsawPuzzle {
         this.canvas.addEventListener('pointercancel', (e) => this.handlePointerUp(e));
         this.canvas.addEventListener('pointerleave', (e) => this.handlePointerUp(e));
 
-        window.addEventListener('resize', () => this.resizeCanvas());
+        window.addEventListener('resize', () => {
+            this.setViewportHeight();
+            this.resizeCanvas();
+        });
+        window.addEventListener('orientationchange', () => {
+            setTimeout(() => {
+                this.setViewportHeight();
+                this.resizeCanvas();
+            }, 100);
+        });
     }
 
     resizeCanvas() {
