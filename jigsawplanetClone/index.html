@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jigsaw Puzzle</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; background: #333; font-family: 'Segoe UI', Arial, sans-serif; }
+#gameCanvas { display: block; cursor: grab; }
+#gameCanvas.dragging { cursor: grabbing; }
+
+/* Toolbar */
+#toolbar {
+  position: fixed; top: 0; left: 0; right: 0;
+  background: rgba(30,30,30,0.92); color: #eee;
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 14px; font-size: 13px; z-index: 100;
+  flex-wrap: wrap; backdrop-filter: blur(6px);
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  transition: transform 0.3s;
+}
+#toolbar.collapsed { transform: translateY(-100%); }
+#toggleToolbar {
+  position: fixed; top: 4px; right: 10px; z-index: 101;
+  background: rgba(30,30,30,0.8); color: #eee; border: 1px solid #555;
+  border-radius: 4px; padding: 2px 8px; cursor: pointer; font-size: 12px;
+  transition: top 0.3s;
+}
+#toggleToolbar.shifted { top: 4px; }
+
+#toolbar label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+#toolbar input[type="file"] { width: 110px; font-size: 11px; }
+#toolbar input[type="text"] { width: 160px; padding: 2px 6px; background: #444; border: 1px solid #666; color: #eee; border-radius: 3px; font-size: 12px; }
+#toolbar select, #toolbar button {
+  padding: 3px 8px; background: #444; border: 1px solid #666;
+  color: #eee; border-radius: 3px; cursor: pointer; font-size: 12px;
+}
+#toolbar button:hover { background: #555; }
+#toolbar .sep { width: 1px; height: 20px; background: #555; margin: 0 4px; }
+#toolbar input[type="range"] { width: 60px; }
+#toolbar input[type="color"] { width: 28px; height: 22px; padding: 0; border: 1px solid #666; cursor: pointer; }
+#timer { font-weight: bold; font-variant-numeric: tabular-nums; min-width: 50px; }
+
+/* Completion overlay */
+#overlay {
+  display: none; position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,0.7); justify-content: center; align-items: center;
+  flex-direction: column; color: #fff; font-size: 24px;
+  backdrop-filter: blur(4px);
+}
+#overlay.show { display: flex; }
+#overlay h2 { font-size: 48px; margin-bottom: 10px; }
+#overlay button { margin-top: 20px; padding: 10px 30px; font-size: 18px; background: #4CAF50; border: none; color: #fff; border-radius: 6px; cursor: pointer; }
+#overlay button:hover { background: #45a049; }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+
+<button id="toggleToolbar" title="Toggle toolbar">&#9776;</button>
+<div id="toolbar">
+  <label>画像: <input type="file" id="imageFile" accept="image/*"></label>
+  <label>URL: <input type="text" id="imageUrl" placeholder="画像URLを入力..."></label>
+  <button id="loadUrl">読込</button>
+  <div class="sep"></div>
+  <label>サイズ:
+    <select id="gridSize">
+      <option value="3,3">3x3 (9)</option>
+      <option value="5,4">5x4 (20)</option>
+      <option value="8,6">8x6 (48)</option>
+      <option value="10,8" selected>10x8 (80)</option>
+      <option value="15,10">15x10 (150)</option>
+      <option value="20,15">20x15 (300)</option>
+    </select>
+  </label>
+  <button id="startBtn">スタート</button>
+  <button id="resetBtn">リセット</button>
+  <div class="sep"></div>
+  <label><input type="checkbox" id="ghostToggle"> ゴースト</label>
+  <label>透明度: <input type="range" id="ghostOpacity" min="5" max="80" value="35"></label>
+  <div class="sep"></div>
+  <label>背景: <input type="color" id="bgColor" value="#808080"></label>
+  <label><input type="checkbox" id="rotationToggle"> 回転</label>
+  <button id="fullscreenBtn">全画面</button>
+  <div class="sep"></div>
+  <span id="timer">00:00</span>
+  <span id="pieceCount"></span>
+</div>
+
+<div id="overlay">
+  <h2>Complete!</h2>
+  <p id="completionTime"></p>
+  <button id="playAgain">もう一度</button>
+</div>
+
+<script>
+'use strict';
+
+// ===== Configuration =====
+const SNAP_RATIO = 0.2;
+const TAB_RATIO = 0.22;
+
+// ===== State =====
+let canvas, ctx;
+let puzzleImage = null;
+let pieces = [];
+let groups = new Map();
+let renderOrder = [];
+let nextGroupId = 0;
+let cols = 10, rows = 8;
+let pieceW, pieceH, tabSize;
+let puzzleX, puzzleY; // solved puzzle origin on canvas
+let dragging = null; // { groupId, offsetX, offsetY, startX, startY }
+let timerInterval = null;
+let timerSeconds = 0;
+let timerStarted = false;
+let gameActive = false;
+let bgColor = '#808080';
+let showGhost = false;
+let ghostOpacity = 0.35;
+let rotationEnabled = false;
+let audioCtx = null;
+let canvasScale = 1;
+
+// ===== Initialization =====
+function init() {
+  canvas = document.getElementById('gameCanvas');
+  ctx = canvas.getContext('2d');
+  resizeCanvas();
+  window.addEventListener('resize', () => { resizeCanvas(); render(); });
+
+  // Mouse events
+  canvas.addEventListener('mousedown', onPointerDown);
+  canvas.addEventListener('mousemove', onPointerMove);
+  canvas.addEventListener('mouseup', onPointerUp);
+  canvas.addEventListener('contextmenu', e => { if (gameActive && rotationEnabled) e.preventDefault(); });
+
+  // Touch events
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); onPointerDown(touchToMouse(e)); }, { passive: false });
+  canvas.addEventListener('touchmove', e => { e.preventDefault(); onPointerMove(touchToMouse(e)); }, { passive: false });
+  canvas.addEventListener('touchend', e => { e.preventDefault(); onPointerUp(touchToMouse(e)); }, { passive: false });
+
+  // UI bindings
+  document.getElementById('imageFile').addEventListener('change', onFileSelect);
+  document.getElementById('loadUrl').addEventListener('click', onUrlLoad);
+  document.getElementById('imageUrl').addEventListener('keydown', e => { if (e.key === 'Enter') onUrlLoad(); });
+  document.getElementById('startBtn').addEventListener('click', startGame);
+  document.getElementById('resetBtn').addEventListener('click', resetGame);
+  document.getElementById('ghostToggle').addEventListener('change', e => { showGhost = e.target.checked; render(); });
+  document.getElementById('ghostOpacity').addEventListener('input', e => { ghostOpacity = e.target.value / 100; render(); });
+  document.getElementById('bgColor').addEventListener('input', e => { bgColor = e.target.value; render(); });
+  document.getElementById('rotationToggle').addEventListener('change', e => { rotationEnabled = e.target.checked; });
+  document.getElementById('fullscreenBtn').addEventListener('click', toggleFullscreen);
+  document.getElementById('playAgain').addEventListener('click', () => { document.getElementById('overlay').classList.remove('show'); startGame(); });
+  document.getElementById('toggleToolbar').addEventListener('click', () => {
+    document.getElementById('toolbar').classList.toggle('collapsed');
+  });
+
+  render();
+}
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+
+function touchToMouse(e) {
+  const t = e.changedTouches[0];
+  return { clientX: t.clientX, clientY: t.clientY, button: 0 };
+}
+
+// ===== Image Loading =====
+function onFileSelect(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const img = new Image();
+  img.onload = () => { puzzleImage = img; URL.revokeObjectURL(img.src); };
+  img.src = URL.createObjectURL(file);
+}
+
+function onUrlLoad() {
+  const url = document.getElementById('imageUrl').value.trim();
+  if (!url) return;
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => { puzzleImage = img; };
+  img.onerror = () => alert('画像の読み込みに失敗しました。CORSの制限がある可能性があります。');
+  img.src = url;
+}
+
+// ===== Sound =====
+function playSnapSound() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.frequency.value = 600;
+  osc.type = 'sine';
+  gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+  osc.start(audioCtx.currentTime);
+  osc.stop(audioCtx.currentTime + 0.1);
+}
+
+function playCompleteSound() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const notes = [523, 659, 784, 1047];
+  notes.forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.frequency.value = freq;
+    osc.type = 'sine';
+    const t = audioCtx.currentTime + i * 0.15;
+    gain.gain.setValueAtTime(0.2, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+    osc.start(t);
+    osc.stop(t + 0.4);
+  });
+}
+
+// ===== Piece Shape Generation =====
+function generateEdges() {
+  // edges[row][col] = { top, right, bottom, left }  (0=flat, 1=tab, -1=blank)
+  const edges = [];
+  for (let r = 0; r < rows; r++) {
+    edges[r] = [];
+    for (let c = 0; c < cols; c++) {
+      edges[r][c] = {
+        top: r === 0 ? 0 : -edges[r - 1][c].bottom,
+        left: c === 0 ? 0 : -edges[r][c - 1].right,
+        bottom: r === rows - 1 ? 0 : (Math.random() < 0.5 ? 1 : -1),
+        right: c === cols - 1 ? 0 : (Math.random() < 0.5 ? 1 : -1),
+      };
+    }
+  }
+  return edges;
+}
+
+function buildPiecePath(edgeInfo, pw, ph, ts) {
+  const path = new Path2D();
+  // Start at top-left (with tab margin offset)
+  // All coordinates relative to piece origin at (ts, ts)
+  const ox = ts, oy = ts;
+
+  // Top edge (left to right)
+  path.moveTo(ox, oy);
+  drawEdgeOnPath(path, ox, oy, pw, 0, edgeInfo.top, true);
+
+  // Right edge (top to bottom)
+  drawEdgeOnPath(path, ox + pw, oy, ph, 1, edgeInfo.right, true);
+
+  // Bottom edge (right to left)
+  drawEdgeOnPath(path, ox + pw, oy + ph, pw, 2, edgeInfo.bottom, true);
+
+  // Left edge (bottom to top)
+  drawEdgeOnPath(path, ox, oy + ph, ph, 3, edgeInfo.left, true);
+
+  path.closePath();
+  return path;
+}
+
+function drawEdgeOnPath(path, startX, startY, length, direction, edgeType, forward) {
+  // direction: 0=right, 1=down, 2=left, 3=up
+  // edgeType: 0=flat, 1=tab(outward), -1=blank(inward)
+  const dx = [1, 0, -1, 0][direction];
+  const dy = [0, 1, 0, -1][direction];
+  // perpendicular (outward from piece center)
+  const px = [0, 1, 0, -1][direction];
+  const py = [-1, 0, 1, 0][direction];
+
+  if (edgeType === 0) {
+    path.lineTo(startX + dx * length, startY + dy * length);
+    return;
+  }
+
+  const e = edgeType; // +1 or -1
+  const l = length;
+  const t = l * TAB_RATIO;
+
+  // Points along the edge
+  const p = (frac) => ({
+    x: startX + dx * l * frac,
+    y: startY + dy * l * frac,
+  });
+
+  // Offset perpendicular
+  const off = (pt, amount) => ({
+    x: pt.x + px * amount * e,
+    y: pt.y + py * amount * e,
+  });
+
+  const p1 = p(0.35);
+  const p2 = p(0.5);
+  const p3 = p(0.65);
+  const p4 = p(1.0);
+
+  // Line to start of tab neck
+  path.lineTo(p1.x, p1.y);
+
+  // Neck curve out
+  const cp1 = off(p(0.34), t * 0.15);
+  const cp2 = off(p(0.38), t * 0.85);
+  const neckStart = off(p(0.40), t);
+  path.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, neckStart.x, neckStart.y);
+
+  // Bulge
+  const cp3 = off(p(0.34), t * 1.25);
+  const cp4 = off(p(0.66), t * 1.25);
+  const neckEnd = off(p(0.60), t);
+  path.bezierCurveTo(cp3.x, cp3.y, cp4.x, cp4.y, neckEnd.x, neckEnd.y);
+
+  // Neck curve back
+  const cp5 = off(p(0.62), t * 0.85);
+  const cp6 = off(p(0.66), t * 0.15);
+  path.bezierCurveTo(cp5.x, cp5.y, cp6.x, cp6.y, p3.x, p3.y);
+
+  // Line to end
+  path.lineTo(p4.x, p4.y);
+}
+
+// ===== Piece & Group Management =====
+function createPieces() {
+  const edgeData = generateEdges();
+  pieces = [];
+  groups.clear();
+  renderOrder = [];
+  nextGroupId = 0;
+
+  // Calculate puzzle dimensions to fit canvas
+  const maxW = canvas.width * 0.85;
+  const maxH = (canvas.height - 50) * 0.85;
+  const imgAspect = puzzleImage.width / puzzleImage.height;
+  const areaAspect = maxW / maxH;
+
+  let totalW, totalH;
+  if (imgAspect > areaAspect) {
+    totalW = maxW;
+    totalH = maxW / imgAspect;
+  } else {
+    totalH = maxH;
+    totalW = maxH * imgAspect;
+  }
+
+  pieceW = totalW / cols;
+  pieceH = totalH / rows;
+  tabSize = Math.min(pieceW, pieceH) * TAB_RATIO;
+  puzzleX = (canvas.width - totalW) / 2;
+  puzzleY = (canvas.height - totalH) / 2 + 20;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const id = r * cols + c;
+      const edges = edgeData[r][c];
+      const piecePath = buildPiecePath(edges, pieceW, pieceH, tabSize);
+
+      // Pre-render to offscreen canvas
+      const offW = pieceW + tabSize * 2;
+      const offH = pieceH + tabSize * 2;
+      const offCanvas = document.createElement('canvas');
+      offCanvas.width = Math.ceil(offW) + 2;
+      offCanvas.height = Math.ceil(offH) + 2;
+      const offCtx = offCanvas.getContext('2d');
+
+      // Clip and draw image
+      offCtx.save();
+      offCtx.beginPath();
+      // Translate path by 1px to avoid edge clipping
+      offCtx.translate(1, 1);
+      const clipPath = buildPiecePath(edges, pieceW, pieceH, tabSize);
+      offCtx.clip(clipPath);
+
+      // Draw the portion of the image for this piece
+      const srcX = (c * puzzleImage.width) / cols - (tabSize * puzzleImage.width) / (totalW);
+      const srcY = (r * puzzleImage.height) / rows - (tabSize * puzzleImage.height) / (totalH);
+      const srcW = ((pieceW + tabSize * 2) * puzzleImage.width) / totalW;
+      const srcH = ((pieceH + tabSize * 2) * puzzleImage.height) / totalH;
+
+      offCtx.drawImage(puzzleImage, srcX, srcY, srcW, srcH, 0, 0, offW, offH);
+      offCtx.restore();
+
+      // Draw outline
+      offCtx.save();
+      offCtx.translate(1, 1);
+      offCtx.strokeStyle = 'rgba(0,0,0,0.35)';
+      offCtx.lineWidth = 1.2;
+      offCtx.stroke(clipPath);
+      offCtx.restore();
+
+      const correctX = puzzleX + c * pieceW;
+      const correctY = puzzleY + r * pieceH;
+
+      const gId = nextGroupId++;
+      const piece = {
+        id, row: r, col: c, edges,
+        currentX: correctX,
+        currentY: correctY,
+        correctX, correctY,
+        rotation: 0,
+        groupId: gId,
+        path: piecePath,
+        offCanvas, offW, offH,
+      };
+
+      pieces.push(piece);
+      groups.set(gId, new Set([id]));
+      renderOrder.push(id);
+    }
+  }
+}
+
+// ===== Scatter Pieces =====
+function scatterPieces() {
+  const margin = tabSize + 10;
+  const w = canvas.width - pieceW - margin * 2;
+  const h = canvas.height - pieceH - margin * 2 - 40;
+  for (const piece of pieces) {
+    piece.currentX = margin + Math.random() * w;
+    piece.currentY = margin + 40 + Math.random() * h;
+    if (rotationEnabled) {
+      piece.rotation = [0, 90, 180, 270][Math.floor(Math.random() * 4)];
+    } else {
+      piece.rotation = 0;
+    }
+  }
+  // Shuffle render order
+  for (let i = renderOrder.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [renderOrder[i], renderOrder[j]] = [renderOrder[j], renderOrder[i]];
+  }
+}
+
+// ===== Rendering =====
+function render() {
+  ctx.fillStyle = bgColor;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  if (!gameActive && !puzzleImage) {
+    ctx.fillStyle = '#aaa';
+    ctx.font = '20px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('画像を読み込んで「スタート」を押してください', canvas.width / 2, canvas.height / 2);
+    ctx.textAlign = 'left';
+    return;
+  }
+
+  // Ghost image
+  if (showGhost && puzzleImage && gameActive) {
+    ctx.save();
+    ctx.globalAlpha = ghostOpacity;
+    const totalW = pieceW * cols;
+    const totalH = pieceH * rows;
+    ctx.drawImage(puzzleImage, puzzleX, puzzleY, totalW, totalH);
+    ctx.restore();
+  }
+
+  // Draw pieces in render order
+  for (const id of renderOrder) {
+    const p = pieces[id];
+    if (!p) continue;
+    ctx.save();
+
+    const drawX = p.currentX - tabSize;
+    const drawY = p.currentY - tabSize;
+
+    if (p.rotation !== 0) {
+      const cx = p.currentX + pieceW / 2;
+      const cy = p.currentY + pieceH / 2;
+      ctx.translate(cx, cy);
+      ctx.rotate((p.rotation * Math.PI) / 180);
+      ctx.translate(-cx, -cy);
+    }
+
+    // Drop shadow
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 5;
+    ctx.shadowOffsetX = 2;
+    ctx.shadowOffsetY = 2;
+
+    ctx.drawImage(p.offCanvas, drawX - 1, drawY - 1);
+    ctx.restore();
+  }
+}
+
+// ===== Interaction =====
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top,
+  };
+}
+
+function hitTest(x, y) {
+  // Test in reverse render order (topmost first)
+  for (let i = renderOrder.length - 1; i >= 0; i--) {
+    const p = pieces[renderOrder[i]];
+    // Transform point into piece-local space
+    let lx = x, ly = y;
+    if (p.rotation !== 0) {
+      const cx = p.currentX + pieceW / 2;
+      const cy = p.currentY + pieceH / 2;
+      const angle = (-p.rotation * Math.PI) / 180;
+      const cos = Math.cos(angle), sin = Math.sin(angle);
+      const dx = x - cx, dy = y - cy;
+      lx = cos * dx - sin * dy + cx;
+      ly = sin * dx + cos * dy + cy;
+    }
+    // Check if point is within the piece path
+    // The path is defined with origin at (tabSize, tabSize), piece at currentX, currentY
+    const testX = lx - p.currentX + tabSize;
+    const testY = ly - p.currentY + tabSize;
+    // Use a temporary canvas context for isPointInPath with Path2D
+    if (ctx.isPointInPath(p.path, testX, testY)) {
+      return p;
+    }
+  }
+  return null;
+}
+
+function onPointerDown(e) {
+  if (!gameActive) return;
+  const pos = getCanvasPos(e);
+  const piece = hitTest(pos.x, pos.y);
+  if (!piece) return;
+
+  // Right click = rotate
+  if (e.button === 2 && rotationEnabled) {
+    rotateGroup(piece.groupId);
+    render();
+    if (!timerStarted) startTimer();
+    return;
+  }
+
+  if (e.button !== 0) return;
+
+  // Start drag
+  dragging = {
+    groupId: piece.groupId,
+    lastX: pos.x,
+    lastY: pos.y,
+  };
+
+  // Bring group to front
+  const groupPieces = groups.get(piece.groupId);
+  const inGroup = new Set(groupPieces);
+  const notInGroup = renderOrder.filter(id => !inGroup.has(id));
+  const inGroupOrdered = renderOrder.filter(id => inGroup.has(id));
+  renderOrder = [...notInGroup, ...inGroupOrdered];
+
+  canvas.classList.add('dragging');
+  render();
+
+  if (!timerStarted) startTimer();
+}
+
+function onPointerMove(e) {
+  if (!dragging) return;
+  const pos = getCanvasPos(e);
+  const dx = pos.x - dragging.lastX;
+  const dy = pos.y - dragging.lastY;
+  dragging.lastX = pos.x;
+  dragging.lastY = pos.y;
+
+  const groupPieces = groups.get(dragging.groupId);
+  if (!groupPieces) return;
+
+  for (const id of groupPieces) {
+    pieces[id].currentX += dx;
+    pieces[id].currentY += dy;
+  }
+  render();
+}
+
+function onPointerUp(e) {
+  if (!dragging) return;
+  const groupId = dragging.groupId;
+  dragging = null;
+  canvas.classList.remove('dragging');
+
+  // Check snapping
+  checkSnap(groupId);
+  render();
+
+  // Check completion
+  if (groups.size === 1 && gameActive) {
+    onComplete();
+  }
+}
+
+// ===== Rotation =====
+function rotateGroup(groupId) {
+  const groupPieces = groups.get(groupId);
+  if (!groupPieces) return;
+
+  // Find center of group
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const id of groupPieces) {
+    const p = pieces[id];
+    minX = Math.min(minX, p.currentX);
+    minY = Math.min(minY, p.currentY);
+    maxX = Math.max(maxX, p.currentX + pieceW);
+    maxY = Math.max(maxY, p.currentY + pieceH);
+  }
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+
+  for (const id of groupPieces) {
+    const p = pieces[id];
+    const px = p.currentX + pieceW / 2;
+    const py = p.currentY + pieceH / 2;
+    // Rotate 90 degrees clockwise around center
+    const nx = cx + (py - cy);
+    const ny = cy - (px - cx);
+    p.currentX = nx - pieceW / 2;
+    p.currentY = ny - pieceH / 2;
+    p.rotation = (p.rotation + 90) % 360;
+  }
+}
+
+// ===== Snap Detection =====
+function checkSnap(groupId) {
+  const groupPieceIds = groups.get(groupId);
+  if (!groupPieceIds) return;
+
+  const threshold = Math.min(pieceW, pieceH) * SNAP_RATIO;
+  let snapped = true;
+
+  while (snapped) {
+    snapped = false;
+    for (const id of groupPieceIds) {
+      const p = pieces[id];
+      const neighbors = getNeighbors(p);
+
+      for (const neighbor of neighbors) {
+        if (!neighbor) continue;
+        if (neighbor.groupId === p.groupId) continue;
+        if (rotationEnabled && neighbor.rotation !== p.rotation) continue;
+
+        // Where should p be relative to neighbor?
+        const expectedX = neighbor.currentX + (p.col - neighbor.col) * pieceW;
+        const expectedY = neighbor.currentY + (p.row - neighbor.row) * pieceH;
+
+        const dx = expectedX - p.currentX;
+        const dy = expectedY - p.currentY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < threshold) {
+          // Snap: move entire dragged group
+          const currentGroupPieces = groups.get(p.groupId);
+          for (const gid of currentGroupPieces) {
+            pieces[gid].currentX += dx;
+            pieces[gid].currentY += dy;
+          }
+
+          // Merge groups
+          mergeGroups(p.groupId, neighbor.groupId);
+          playSnapSound();
+          snapped = true;
+          break;
+        }
+      }
+      if (snapped) break;
+    }
+  }
+}
+
+function getNeighbors(piece) {
+  const { row, col } = piece;
+  const result = [];
+  // top
+  if (row > 0) result.push(pieces[(row - 1) * cols + col]);
+  // right
+  if (col < cols - 1) result.push(pieces[row * cols + col + 1]);
+  // bottom
+  if (row < rows - 1) result.push(pieces[(row + 1) * cols + col]);
+  // left
+  if (col > 0) result.push(pieces[row * cols + col - 1]);
+  return result;
+}
+
+function mergeGroups(gidA, gidB) {
+  const groupA = groups.get(gidA);
+  const groupB = groups.get(gidB);
+  if (!groupA || !groupB) return;
+
+  // Merge smaller into larger
+  let keepId, mergeId, keepGroup, mergeGroup;
+  if (groupA.size >= groupB.size) {
+    keepId = gidA; mergeId = gidB; keepGroup = groupA; mergeGroup = groupB;
+  } else {
+    keepId = gidB; mergeId = gidA; keepGroup = groupB; mergeGroup = groupA;
+  }
+
+  for (const id of mergeGroup) {
+    pieces[id].groupId = keepId;
+    keepGroup.add(id);
+  }
+  groups.delete(mergeId);
+}
+
+// ===== Timer =====
+function startTimer() {
+  timerStarted = true;
+  timerSeconds = 0;
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    timerSeconds++;
+    updateTimerDisplay();
+  }, 1000);
+}
+
+function stopTimer() {
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+}
+
+function updateTimerDisplay() {
+  const m = String(Math.floor(timerSeconds / 60)).padStart(2, '0');
+  const s = String(timerSeconds % 60).padStart(2, '0');
+  document.getElementById('timer').textContent = `${m}:${s}`;
+}
+
+// ===== Game Flow =====
+function startGame() {
+  if (!puzzleImage) {
+    alert('先に画像を読み込んでください。');
+    return;
+  }
+
+  const sizeVal = document.getElementById('gridSize').value.split(',');
+  cols = parseInt(sizeVal[0]);
+  rows = parseInt(sizeVal[1]);
+
+  stopTimer();
+  timerStarted = false;
+  timerSeconds = 0;
+  updateTimerDisplay();
+
+  createPieces();
+  scatterPieces();
+  gameActive = true;
+
+  document.getElementById('pieceCount').textContent = `${cols * rows} pieces`;
+  document.getElementById('overlay').classList.remove('show');
+  render();
+}
+
+function resetGame() {
+  if (!gameActive || pieces.length === 0) return;
+  stopTimer();
+  timerStarted = false;
+  timerSeconds = 0;
+  updateTimerDisplay();
+
+  // Reset groups
+  groups.clear();
+  nextGroupId = 0;
+  for (const p of pieces) {
+    const gId = nextGroupId++;
+    p.groupId = gId;
+    groups.set(gId, new Set([p.id]));
+  }
+
+  scatterPieces();
+  document.getElementById('overlay').classList.remove('show');
+  render();
+}
+
+function onComplete() {
+  gameActive = false;
+  stopTimer();
+  playCompleteSound();
+
+  // Snap all pieces to correct positions
+  const group = groups.values().next().value;
+  // Find offset from first piece
+  const firstPiece = pieces[group.values().next().value];
+  const dx = firstPiece.correctX - firstPiece.currentX;
+  const dy = firstPiece.correctY - firstPiece.currentY;
+  for (const id of group) {
+    pieces[id].currentX += dx;
+    pieces[id].currentY += dy;
+    pieces[id].rotation = 0;
+  }
+  render();
+
+  const m = String(Math.floor(timerSeconds / 60)).padStart(2, '0');
+  const s = String(timerSeconds % 60).padStart(2, '0');
+  document.getElementById('completionTime').textContent = `タイム: ${m}:${s}`;
+  setTimeout(() => {
+    document.getElementById('overlay').classList.add('show');
+  }, 500);
+}
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  } else {
+    document.exitFullscreen();
+  }
+}
+
+// ===== Start =====
+window.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
