@@ -124,6 +124,17 @@ let ghostOpacity = 0.35;
 let rotationEnabled = false;
 let audioCtx = null;
 let canvasScale = 1;
+let renderRequested = false;
+
+function scheduleRender() {
+  if (!renderRequested) {
+    renderRequested = true;
+    requestAnimationFrame(() => {
+      renderRequested = false;
+      render();
+    });
+  }
+}
 
 // ===== Initialization =====
 function init() {
@@ -476,11 +487,13 @@ function render() {
       ctx.translate(-cx, -cy);
     }
 
-    // Drop shadow
-    ctx.shadowColor = 'rgba(0,0,0,0.35)';
-    ctx.shadowBlur = 5;
-    ctx.shadowOffsetX = 2;
-    ctx.shadowOffsetY = 2;
+    // Drop shadow (skip during drag for performance)
+    if (!dragging) {
+      ctx.shadowColor = 'rgba(0,0,0,0.35)';
+      ctx.shadowBlur = 5;
+      ctx.shadowOffsetX = 2;
+      ctx.shadowOffsetY = 2;
+    }
 
     ctx.drawImage(p.offCanvas, drawX - 1, drawY - 1);
     ctx.restore();
@@ -574,7 +587,7 @@ function onPointerMove(e) {
     pieces[id].currentX += dx;
     pieces[id].currentY += dy;
   }
-  render();
+  scheduleRender();
 }
 
 function onPointerUp(e) {
